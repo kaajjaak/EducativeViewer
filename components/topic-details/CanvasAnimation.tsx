@@ -1,0 +1,220 @@
+"use client";
+import { useState, useEffect, useMemo } from 'react';
+import { resolveEduUrl } from '@/utils/constants';
+import { prepareSvg } from '@/utils/svg-helpers';
+import { usePreparedImageSources } from '@/utils/use-prepared-image';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface SlideData {
+    id: number;
+    svgBackground: string;
+    imagePath: string;
+    width: number;
+    height: number;
+}
+
+interface CanvasObject {
+    svg_string?: string;
+    width?: number;
+    height?: number;
+    objectsDict?: Record<string, {
+        educativeObjContent?: {
+            content?: {
+                path?: string;
+            };
+        };
+    }>;
+}
+
+export interface CanvasAnimationData {
+    width?: number;
+    height?: number;
+    canvasObjects?: CanvasObject[];
+    lazyLoadData?: {
+        components?: Array<{
+            type: string;
+            content?: {
+                canvasObjects?: CanvasObject[];
+            };
+        }>;
+    };
+}
+
+// ─── Parsing ──────────────────────────────────────────────────────────────────
+
+function readPath(value?: string): string {
+    const next = value?.trim() ?? '';
+    return next;
+}
+
+function extractCanvasPath(obj: CanvasObject): string {
+    for (const entry of Object.values(obj.objectsDict ?? {})) {
+        const entryPath = readPath(entry.educativeObjContent?.content?.path);
+        if (entryPath) return entryPath;
+    }
+
+    return '';
+}
+
+function parseSlides(data: CanvasAnimationData): SlideData[] {
+    const slides: SlideData[] = [];
+
+    // Direct canvasObjects (when passed via LazyLoadPlaceholder)
+    const directObjects = data?.canvasObjects;
+    if (directObjects?.length) {
+        directObjects.forEach((obj, index) => {
+            slides.push({
+                id: index,
+                svgBackground: obj.svg_string ?? '',
+                imagePath: extractCanvasPath(obj),
+                width: obj.width ?? data.width ?? 710,
+                height: obj.height ?? data.height ?? 550,
+            });
+        });
+        return slides;
+    }
+
+    // Nested in lazyLoadData.components (when rendered directly)
+    const components = data?.lazyLoadData?.components ?? [];
+    for (const comp of components) {
+        if (comp.type === 'CanvasAnimation') {
+            const canvasObjects = comp.content?.canvasObjects ?? [];
+            canvasObjects.forEach((obj, index) => {
+                slides.push({
+                    id: index,
+                    svgBackground: obj.svg_string ?? '',
+                    imagePath: extractCanvasPath(obj),
+                    width: obj.width ?? data.width ?? 710,
+                    height: obj.height ?? data.height ?? 550,
+                });
+            });
+        }
+    }
+    return slides;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SvgRenderer({ svgString }: { svgString: string }) {
+    return (
+        <div
+            dangerouslySetInnerHTML={{ __html: prepareSvg(svgString) }}
+            style={{ lineHeight: 0, fontSize: 0, display: 'block' }}
+        />
+    );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function CanvasAnimation({ data }: { data: CanvasAnimationData }) {
+    const slides = useMemo(() => parseSlides(data), [data]);
+    const imageUrls = useMemo(
+        () => slides.map((slide) => (slide.svgBackground ? '' : (slide.imagePath ? resolveEduUrl(slide.imagePath) : ''))),
+        [slides]
+    );
+    const { preparedUrls, isPreparing } = usePreparedImageSources(imageUrls);
+    const [currentSlide, setCurrentSlide] = useState(0);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        if (!isFullscreen) return;
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullscreen(false); };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [isFullscreen]);
+
+    if (!slides.length)
+        return <div className="p-8 text-center text-gray-500">No slides to display.</div>;
+
+    return (
+        <div className={isFullscreen ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/80' : 'max-w-4xl mx-auto px-6 py-2'}>
+            <div className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden flex flex-col ${isFullscreen ? 'w-full h-full rounded-none' : ''}`}>
+                {/* Slide area – white background so SVG text/paths designed for light bg remain visible */}
+                <div className="canvas-slide-area" style={{ position: 'relative', lineHeight: 0, backgroundColor: 'white' }}>
+                    <style>{`.canvas-slide svg { display: block; }`}</style>
+                    {slides.map((slide, idx) => (
+                        <div
+                            key={idx}
+                            className="canvas-slide"
+                            style={{ visibility: idx === currentSlide ? 'visible' : 'hidden', height: idx === currentSlide ? 'auto' : 0, overflow: 'hidden', display: 'flex', justifyContent: 'center' }}
+                        >
+                            {slide.svgBackground ? (
+                                <SvgRenderer svgString={slide.svgBackground} />
+                            ) : !isPreparing && preparedUrls[idx] ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={preparedUrls[idx]}
+                                    alt={`Canvas slide ${idx + 1}`}
+                                    className="max-w-full h-auto object-contain"
+                                />
+                            ) : idx === currentSlide ? (
+                                <div className="py-8 text-sm text-gray-400 italic">Preparing slide...</div>
+                            ) : null}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Bottom toolbar */}
+                <div className="flex items-center px-4 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0">
+                    {/* Left: fullscreen + reset */}
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setIsFullscreen(f => !f)}
+                            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                            className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors cursor-pointer"
+                        >
+                            {isFullscreen ? (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v4a1 1 0 01-1 1H3m18 0h-4a1 1 0 01-1-1V3m0 18v-4a1 1 0 011-1h4M3 16h4a1 1 0 011 1v4" />
+                                </svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M16 4h4v4M4 16v4h4M20 16v4h-4" />
+                                </svg>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setCurrentSlide(0)}
+                            title="Reset to first slide"
+                            className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors cursor-pointer"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M4.93 14A8 8 0 1 0 6.34 7.34" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Center: slide counter */}
+                    <div className="flex-1 text-center text-sm font-medium text-gray-600 dark:text-gray-400">
+                        <span className="font-bold text-gray-900 dark:text-gray-100">{currentSlide + 1}</span>
+                        <span className="mx-1 text-gray-400 dark:text-gray-600">/</span>
+                        <span>{slides.length}</span>
+                    </div>
+
+                    {/* Right: prev + next */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setCurrentSlide(s => Math.max(s - 1, 0))}
+                            disabled={currentSlide === 0}
+                            className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={() => setCurrentSlide(s => Math.min(s + 1, slides.length - 1))}
+                            disabled={currentSlide === slides.length - 1}
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
