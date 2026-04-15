@@ -14,7 +14,7 @@ SQLite DB and `api` folder this viewer consumes.
 
 - Node.js 20+
 - A course SQLite database (`*.db`)
-- Optionally, an `api.zip` of static assets from the scraper (images, SVGs)
+- Optionally, an `api` folder of static assets from the scraper (images, SVGs)
 
 ## Setup
 
