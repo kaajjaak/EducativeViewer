@@ -8,7 +8,7 @@ Judge0 (for code execution) and `cdn.jsdelivr.net` (for Mermaid).
 
 Pairs with the scraper at
 <https://github.com/anilabhadatta/educative.io_scraper> — it produces the
-SQLite DB and `api.zip` this viewer consumes.
+SQLite DB and `api` folder this viewer consumes.
 
 ## Requirements
 
@@ -56,9 +56,9 @@ mutate scraper output.
 
 Educative topic content references assets at paths like
 `/api/collection/<author>/<collection>/page/<page>/image/<id>`. The scraper
-ships these in `api.zip`. To serve them:
+ships these in `api` folder. To serve them:
 
-1. Unzip at the repo root so files land under `./api/collection/...`.
+1. Copy at the repo root so files land under `./api/collection/...`.
 2. Start (or restart) the dev server.
 
 A catch-all route at `app/api/collection/[...slug]/route.ts` reads the file
@@ -66,7 +66,7 @@ from disk, sniffs the magic bytes (PNG / JPEG / GIF / WebP / SVG), and
 serves it with the correct `Content-Type` and a one-year immutable cache
 header. Path traversal is rejected.
 
-`./api/` and `./api.zip` are git-ignored — assets are bulk data, not source.
+`./api/` is git-ignored — assets are bulk data, not source.
 
 ## Layout
 
