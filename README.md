@@ -6,6 +6,13 @@ scraper captures — code playgrounds, quizzes, widgets, diagrams, and so on.
 There is no login, no backend service, and no network dependency except
 Judge0 (for code execution) and `cdn.jsdelivr.net` (for Mermaid).
 
+Based on <https://github.com/Biraj2004/EducativeViewer> — stripped down to
+a local-only viewer. The original ships a Flask auth backend, Oracle/SQLite
+user DB, JWT + RSA password encryption, Cloudflare Worker proxy, and
+Vercel deploy tooling. This fork keeps only the Next.js viewer, drops all
+auth and multi-tenant infrastructure, and reads the course DB + asset
+files directly from disk.
+
 Pairs with the scraper at
 <https://github.com/anilabhadatta/educative.io_scraper> — it produces the
 SQLite DB and `api` folder this viewer consumes.
